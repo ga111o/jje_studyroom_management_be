@@ -49,10 +49,9 @@ CREATE TABLE IF NOT EXISTS registration (
     cancelled BOOLEAN DEFAULT 0, -- 취소 여부
     cancelled_at TEXT, -- 취소 시간
     cancellation_reason TEXT, -- 취소 사유
-    issue_type INTEGER, -- 문제 유형
+    issue_type TEXT, -- 특이사항
     note TEXT, -- 비고
-    FOREIGN KEY (session_id) REFERENCES study_session(id),
-    FOREIGN KEY (issue_type) REFERENCES issue_types(id)
+    FOREIGN KEY (session_id) REFERENCES study_session(id)
 );
 """
 

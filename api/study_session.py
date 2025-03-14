@@ -301,7 +301,8 @@ def get_session_registrations_by_date(
     # Get all registrations for this session and date
     cursor.execute("""
         SELECT r.id, r.name, r.grade, r.class, r.number, r.student_id,
-               r.seat_id_row, r.seat_id_col, r.registered_at, r.cancelled
+               r.seat_id_row, r.seat_id_col, r.registered_at, r.cancelled,
+               r.issue_type, r.note
         FROM registration r
         WHERE r.session_id = ? AND r.date = ? AND r.cancelled = 0
     """, (session_id, date))
@@ -315,7 +316,9 @@ def get_session_registrations_by_date(
             "class": reg["class"],
             "number": reg["number"],
             "student_id": reg["student_id"],
-            "registered_at": reg["registered_at"]
+            "registered_at": reg["registered_at"],
+            "issue_type": reg["issue_type"],
+            "note": reg["note"]
         }
     
     # Create a layout with student information
@@ -351,7 +354,9 @@ def get_session_registrations_by_date(
                             "class": 0,
                             "number": 0,
                             "student_id": "",
-                            "registered_at": ""
+                            "registered_at": "",
+                            "issue_type": None,
+                            "note": ""
                         }
                 
                 seat_row.append(seat_info)
@@ -367,3 +372,146 @@ def get_session_registrations_by_date(
         "layout": seat_layout,
         "registration_count": registration_count
     }
+
+@router.get("/{session_id}/dates")
+def get_session_dates(session_id: str, db: sqlite3.Connection = Depends(get_db_dependency)):
+    """특정 세션 ID에 해당하는 모든 날짜 조회"""
+    cursor = db.cursor()
+    
+    # 해당 세션 ID가 존재하는지 확인
+    cursor.execute("SELECT id FROM study_session WHERE id = ?", (session_id,))
+    session = cursor.fetchone()
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Study session not found")
+    
+    # 해당 세션 ID에 대한 모든 등록 날짜 조회 (중복 제거)
+    cursor.execute(
+        "SELECT DISTINCT date FROM registration WHERE session_id = ? ORDER BY date",
+        (session_id,)
+    )
+    dates = cursor.fetchall()
+    
+    # 날짜를 요청된 형식으로 변환 [{year: , month: , date: }, ...]
+    formatted_dates = []
+    for date_row in dates:
+        date_str = date_row["date"]
+        try:
+            year, month, day = date_str.split("-")
+            formatted_date = {
+                "year": year,
+                "month": month,
+                "date": day
+            }
+            formatted_dates.append(formatted_date)
+        except ValueError:
+            continue
+    
+    return formatted_dates
+
+@router.get("/{session_id}/users/{yyyy}/{mm}/{dd}")
+def get_session_users_by_date(
+    session_id: str, 
+    yyyy: str, 
+    mm: str, 
+    dd: str, 
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db_dependency)
+):
+    # 토큰 검증
+    is_authenticated = False
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        payload = verify_token(token)
+        if payload:
+            is_authenticated = True
+    
+    cursor = db.cursor()
+    date = f"{yyyy}-{mm}-{dd}"
+    
+    # Check if study session exists and get session details including room info
+    cursor.execute("""
+        SELECT s.id, s.name, s.start_time, s.end_time, 
+               s.one_grade, s.two_grade, s.three_grade,
+               s.minutes_before, s.minutes_after, 
+               s.room_id, r.name as room_name, r.layout
+        FROM study_session s
+        JOIN study_room r ON s.room_id = r.id
+        WHERE s.id = ?
+    """, (session_id,))
+    
+    session = cursor.fetchone()
+    if not session:
+        raise HTTPException(status_code=404, detail="Study session not found")
+    
+    # Parse room layout to get seat numbers
+    layout = json.loads(session["layout"]) if session["layout"] else []
+    
+    # Get all registrations for this session and date
+    cursor.execute("""
+        SELECT r.id, r.name, r.grade, r.class, r.number, r.student_id,
+               r.seat_id_row, r.seat_id_col, r.registered_at, r.cancelled,
+               r.issue_type, r.note
+        FROM registration r
+        WHERE r.session_id = ? AND r.date = ? AND r.cancelled = 0
+    """, (session_id, date))
+    
+    registrations = []
+    for reg in cursor.fetchall():
+        # Get seat number from layout
+        seat_row = int(reg["seat_id_row"])
+        seat_col = int(reg["seat_id_col"])
+        seat_number = None
+        
+        # Check if row and column are within layout bounds
+        if 0 <= seat_row < len(layout) and 0 <= seat_col < len(layout[seat_row]):
+            seat_number = layout[seat_row][seat_col] if layout[seat_row][seat_col] != "aisle" else None
+        
+        print("ㅁㄴㅇㄹ", seat_number)
+
+        # 인증된 사용자에게만 학생 정보 제공
+        if is_authenticated:
+            registrations.append({
+                "id": reg["id"],
+                "name": reg["name"],
+                "grade": reg["grade"],
+                "class": reg["class"],
+                "number": reg["number"],
+                "student_id": reg["student_id"],
+                "seat_id_row": reg["seat_id_row"],
+                "seat_id_col": reg["seat_id_col"],
+                "seat_number": seat_number,
+                "registered_at": reg["registered_at"],
+                "issue_type": reg["issue_type"],
+                "note": reg["note"]
+            })
+        else:
+            # 인증되지 않은 사용자에게는 학생 정보를 가림
+            registrations.append({
+                "id": "",
+                "name": "",
+                "grade": 0,
+                "class": 0,
+                "number": 0,
+                "student_id": "",
+                "seat_id_row": reg["seat_id_row"],
+                "seat_id_col": reg["seat_id_col"],
+                "seat_number": seat_number,
+                "registered_at": "",
+                "issue_type": None,
+                "note": ""
+            })
+    
+    return {
+        "session_id": session_id,
+        "session_name": session["name"],
+        "room": {
+            "id": session["room_id"],
+            "name": session["room_name"]
+        },
+        "date": date,
+        "users": registrations,
+        "registration_count": len(registrations)
+    }
+

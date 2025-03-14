@@ -106,7 +106,7 @@ async def assign_issue_to_registration(
     
     # 이슈 설명 업데이트
     cursor.execute(
-        "UPDATE registration SET note = ? WHERE id = ?",
+        "UPDATE registration SET issue_type = ? WHERE id = ?",
         (issue_data.issue_description, registration_id)
     )
     db.commit()
@@ -141,4 +141,31 @@ async def add_memo_to_registration(
     db.commit()
     
     return {"message": "Memo added successfully", "registration_id": registration_id}
+
+# 특정 학생의 이슈 타입과 메모 조회
+class IssueAndNoteResponse(BaseModel):
+    registration_id: str
+    issue_type: Optional[str] = None
+    note: Optional[str] = None
+
+@router.get("/student/{registration_id}", response_model=IssueAndNoteResponse)
+async def get_student_issue_and_note(
+    registration_id: str, 
+    db: sqlite3.Connection = Depends(get_db_dependency)
+):
+    """특정 학생의 이슈 타입과 메모 조회"""
+    cursor = db.cursor()
+    
+    # 등록 정보 확인
+    cursor.execute("SELECT id, issue_type, note FROM registration WHERE id = ?", (registration_id,))
+    registration = cursor.fetchone()
+    
+    if not registration:
+        raise HTTPException(status_code=404, detail="Registration not found")
+    
+    return {
+        "registration_id": registration_id,
+        "issue_type": registration["issue_type"],
+        "note": registration["note"]
+    }
 
