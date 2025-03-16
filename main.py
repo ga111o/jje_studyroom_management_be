@@ -66,4 +66,4 @@ app.include_router(router=registration_router, prefix="/registration", tags=["re
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=44920, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=52357, reload=True)
