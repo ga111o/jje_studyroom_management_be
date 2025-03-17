@@ -29,32 +29,32 @@ app.add_middleware(
 def roooot():
     return "ga111o!"
 
-# @app.middleware("http")
-# async def token_validator(request: Request, call_next):
-#     except_path = ["/", "/docs", "/auth/", "/openapi.json", "/registration/", "/studyroom/"]
+@app.middleware("http")
+async def token_validator(request: Request, call_next):
+    except_path = ["/", "/docs", "/auth/", "/openapi.json", "/registration/", "/session/", "/issue/"]
     
-#     if request.url.path in except_path:
-#         print(f"except path: {request.url.path}")
-#         return await call_next(request)
+    if any(request.url.path.startswith(path) for path in except_path):
+        print(f"except path: {request.url.path}")
+        return await call_next(request)
     
-#     auth_header = request.headers.get("Authorization")
-#     if not auth_header or not auth_header.startswith("Bearer "):
-#         return JSONResponse(
-#             status_code=status.HTTP_401_UNAUTHORIZED,
-#             content={"detail": "not auth header"}
-#         )
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "not auth header"}
+        )
     
-#     token = auth_header.split(" ")[1]
-#     # print(f"token: {token}")
-#     payload = verify_token(token)
-#     print(f"payload: {payload}")
-#     if not payload:
-#         return JSONResponse(
-#             status_code=status.HTTP_401_UNAUTHORIZED,
-#             content={"detail": "not payload"}
-#         )
+    token = auth_header.split(" ")[1]
+    # print(f"token: {token}")
+    payload = verify_token(token)
+    print(f"payload: {payload}")
+    if not payload:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "not payload"}
+        )
 
-#     return await call_next(request)
+    return await call_next(request)
 
 
 init_database()
